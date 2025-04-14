@@ -20,24 +20,33 @@ jobs:
         with:
           python-version: 3.x
 
-      - name: Generate and replace UUID
+      - name: Find modified */*/common.yaml files
+        id: find_files
+        run: |
+          FILES=$(git diff --name-only origin/${{ github.base_ref }}...${{ github.head_ref }} | grep -E '^[^/]+/[^/]+/common\.yaml$' || true)
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Replace "generate" with UUID
         id: replace
         run: |
-          FILE="common.yaml"
-          if grep -q 'asset_uuid: generate' "$FILE"; then
-            UUID=$(python -c "import uuid; print(uuid.uuid4())")
-            echo "Replacing with UUID: $UUID"
-            sed -i "s/asset_uuid: generate/asset_uuid: $UUID/" "$FILE"
-            echo "uuid=$UUID" >> $GITHUB_OUTPUT
-          else
-            echo "No replacement needed."
-            echo "uuid=none" >> $GITHUB_OUTPUT
-          fi
+          changed=false
+          for FILE in ${{ steps.find_files.outputs.files }}; do
+            if grep -q 'asset_uuid: generate' "$FILE"; then
+              UUID=$(uuidgen)
+              echo "Replacing in $FILE with UUID: $UUID"
+              sed -i "s/asset_uuid: generate/asset_uuid: $UUID/" "$FILE"
+              changed=true
+            fi
+          done
+
+          echo "changed=$changed" >> $GITHUB_OUTPUT
 
       - name: Commit and push changes
-        if: steps.replace.outputs.uuid != 'none'
+        if: steps.replace.outputs.changed == 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git commit -am "Replace asset_uuid: generate with UUID"
+          git commit -am "Replace asset_uuid: generate with UUID in common.yaml"
           git push origin HEAD:${{ github.head_ref }}
