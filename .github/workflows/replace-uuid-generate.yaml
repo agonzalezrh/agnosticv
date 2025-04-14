@@ -3,7 +3,8 @@ name: Replace asset_uuid on PR
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    branches:
+      - master
 
 jobs:
   replace-uuid:
