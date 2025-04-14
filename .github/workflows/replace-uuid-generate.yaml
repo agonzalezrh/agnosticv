@@ -1,6 +1,8 @@
 ---
 name: Replace asset_uuid on PR
 
+
+
 on:
   pull_request:
     branches:
@@ -8,37 +10,45 @@ on:
 
 jobs:
   replace-uuid:
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    #if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          fetch-depth: 0  # Required for tj-actions to diff properly
 
-      - name: Set up Python (for UUID generation)
-        uses: actions/setup-python@v5
+      - name: Get list of changed files
+        id: changed
+        uses: tj-actions/changed-files@v44
         with:
-          python-version: 3.x
+          files: '**/common.yaml'
 
-      - name: Generate and replace UUID
-        id: replace
+      - name: Replace 'generate' with UUID in common.yaml files
+        if: steps.changed.outputs.all_changed_files != ''
         run: |
-          FILE="common.yaml"
-          if grep -q 'asset_uuid: generate' "$FILE"; then
-            UUID=$(python -c "import uuid; print(uuid.uuid4())")
-            echo "Replacing with UUID: $UUID"
-            sed -i "s/asset_uuid: generate/asset_uuid: $UUID/" "$FILE"
-            echo "uuid=$UUID" >> $GITHUB_OUTPUT
-          else
-            echo "No replacement needed."
-            echo "uuid=none" >> $GITHUB_OUTPUT
-          fi
+          for file in ${{ steps.changed.outputs.all_changed_files }}; do
+            echo "Checking $file"
+            if grep -q 'asset_uuid: generate' "$file"; then
+              UUID=$(uuidgen)
+              echo "Replacing in $file with UUID: $UUID"
+              sed -i "s/asset_uuid: generate/asset_uuid: $UUID/" "$file"
+            fi
+          done
 
-      - name: Commit and push changes
-        if: steps.replace.outputs.uuid != 'none'
+      - name: Configure git credentials
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git commit -am "Replace asset_uuid: generate with UUID"
-          git push origin HEAD:${{ github.head_ref }}
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+
+      - name: Commit and push changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit."
+          else
+            git push origin HEAD:${{ github.head_ref }}
+          fi
