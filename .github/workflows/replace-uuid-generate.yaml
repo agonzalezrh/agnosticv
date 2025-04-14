@@ -1,14 +1,19 @@
 ---
 name: Replace asset_uuid on PR
 
+
+
 on:
   pull_request:
     types: [opened, synchronize]
 
 jobs:
   replace-uuid:
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    #if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
