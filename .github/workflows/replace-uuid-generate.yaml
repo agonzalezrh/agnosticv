@@ -18,23 +18,28 @@ jobs:
       - name: Get list of changed files
         id: changed
         uses: tj-actions/changed-files@v44
+        with:
+          files: '**/common.yaml'
 
-      - name: Check if common.yaml was changed
-        if: contains(steps.changed.outputs.all_changed_files, 'common.yaml')
-        run: echo "common.yaml was changed!"
-
-      - name: Replace 'generate' with UUID if needed
-        if: contains(steps.changed.outputs.all_changed_files, 'common.yaml')
+      - name: Replace 'generate' with UUID in common.yaml files
+        if: steps.changed.outputs.all_changed_files != ''
         run: |
-          FILE="common.yaml"
-          if grep -q 'asset_uuid: generate' "$FILE"; then
-            UUID=$(uuidgen)
-            echo "Replacing with UUID: $UUID"
-            sed -i "s/asset_uuid: generate/asset_uuid: $UUID/" "$FILE"
+          for file in ${{ steps.changed.outputs.all_changed_files }}; do
+            echo "Checking $file"
+            if grep -q 'asset_uuid: generate' "$file"; then
+              UUID=$(uuidgen)
+              echo "Replacing in $file with UUID: $UUID"
+              sed -i "s/asset_uuid: generate/asset_uuid: $UUID/" "$file"
+            fi
+          done
+
+      - name: Commit and push changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit."
+          else
             git config user.name "github-actions"
             git config user.email "github-actions@github.com"
             git commit -am "Replace asset_uuid: generate with UUID"
             git push origin HEAD:${{ github.head_ref }}
-          else
-            echo "No 'generate' line found in common.yaml"
           fi
