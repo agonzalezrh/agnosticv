@@ -13,41 +13,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          fetch-depth: 0  # Required for tj-actions to diff properly
 
-      - name: Set up Python (for UUID generation)
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.x
+      - name: Get list of changed files
+        id: changed
+        uses: tj-actions/changed-files@v44
 
-      - name: Find modified */*/common.yaml files
-        id: find_files
+      - name: Check if common.yaml was changed
+        if: contains(steps.changed.outputs.all_changed_files, 'common.yaml')
+        run: echo "common.yaml was changed!"
+
+      - name: Replace 'generate' with UUID if needed
+        if: contains(steps.changed.outputs.all_changed_files, 'common.yaml')
         run: |
-          git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
-          FILES=$(git diff --name-only ${{ github.base_ref }}...HEAD | grep -E '^[^/]+/[^/]+/common\.yaml$' || true)
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$FILES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Replace "generate" with UUID
-        id: replace
-        run: |
-          changed=false
-          for FILE in ${{ steps.find_files.outputs.files }}; do
-            if grep -q 'asset_uuid: generate' "$FILE"; then
-              UUID=$(uuidgen)
-              echo "Replacing in $FILE with UUID: $UUID"
-              sed -i "s/asset_uuid: generate/asset_uuid: $UUID/" "$FILE"
-              changed=true
-            fi
-          done
-
-          echo "changed=$changed" >> $GITHUB_OUTPUT
-
-      - name: Commit and push changes
-        if: steps.replace.outputs.changed == 'true'
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git commit -am "Replace asset_uuid: generate with UUID in common.yaml"
-          git push origin HEAD:${{ github.head_ref }}
+          sudo apt-get update && sudo apt-get install -y uuid-runtime
+          FILE="common.yaml"
+          if grep -q 'asset_uuid: generate' "$FILE"; then
+            UUID=$(uuidgen)
+            echo "Replacing with UUID: $UUID"
+            sed -i "s/asset_uuid: generate/asset_uuid: $UUID/" "$FILE"
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git commit -am "Replace asset_uuid: generate with UUID"
+            git push origin HEAD:${{ github.head_ref }}
+          else
+            echo "No 'generate' line found in common.yaml"
